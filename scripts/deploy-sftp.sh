@@ -16,7 +16,9 @@
 #   SFTP_HOST            default: sftp.siteground.net
 #   SFTP_PORT            default: 18765
 #   REMOTE_DIR           the site's public_html, if it is not found automatically
-#   SFTP_KNOWN_HOSTS     known_hosts line(s), to pin the server's host key
+#   SFTP_HOST_FINGERPRINT  the server's host key fingerprint (SHA256:...). When set,
+#                        the upload stops if the server presents any other key.
+#   SFTP_KNOWN_HOSTS     known_hosts line(s), another way to pin the server's host key
 #   SOURCE_DIR           default: public
 #   DRY_RUN=1            show what would be uploaded and upload nothing
 #
@@ -143,6 +145,27 @@ else
     "Check SFTP_HOST and SFTP_PORT."
 fi
 
+# With a fingerprint to check against, trust only the key that matches it.
+if [ -n "${SFTP_HOST_FINGERPRINT:-}" ]; then
+  : > "$work/known_hosts.pinned"
+  seen=""
+  while IFS= read -r host_line; do
+    case "$host_line" in '' | '#'*) continue ;; esac
+    printf '%s\n' "$host_line" > "$work/one_host_key"
+    fingerprint="$(ssh-keygen -lf "$work/one_host_key" 2>/dev/null | awk '{print $2}')" || fingerprint=""
+    [ -n "$fingerprint" ] || continue
+    seen="$seen $fingerprint"
+    if [ "$fingerprint" = "$SFTP_HOST_FINGERPRINT" ]; then
+      printf '%s\n' "$host_line" >> "$work/known_hosts.pinned"
+    fi
+  done < "$known_hosts"
+  [ -s "$work/known_hosts.pinned" ] || fail "$SFTP_HOST is not presenting the expected host key." \
+    "Expected: $SFTP_HOST_FINGERPRINT" \
+    "Got:     ${seen:- none}" \
+    "If SiteGround changed its key, confirm the new fingerprint with them, then update SFTP_HOST_FINGERPRINT."
+  cat "$work/known_hosts.pinned" > "$known_hosts"
+fi
+
 # sftp_run: run the SFTP commands given on stdin.
 sftp_run() {
   sftp -b - -P "$SFTP_PORT" -i "$key" \
@@ -174,8 +197,12 @@ if ! printf 'pwd\n' | sftp_run >/dev/null 2> "$work/login_error"; then
         "(GitHub's servers connect from changing addresses)."
       ;;
     *"Host key verification failed"*)
-      fail "the server's host key does not match SFTP_KNOWN_HOSTS." \
-        "If SiteGround changed its key, update or remove the SFTP_KNOWN_HOSTS variable."
+      if [ -n "${SFTP_KNOWN_HOSTS:-}" ]; then
+        fail "the server's host key does not match SFTP_KNOWN_HOSTS." \
+          "If SiteGround changed its key, update or remove the SFTP_KNOWN_HOSTS variable."
+      fi
+      fail "the server presented a different host key than the one just checked." \
+        "Run the job again. If it keeps happening, stop and check with SiteGround."
       ;;
     *"timed out"* | *"refused"* | *"Could not resolve"* | *"No route"*)
       fail "could not connect to $SFTP_HOST on port $SFTP_PORT." "$login_error"
@@ -192,7 +219,8 @@ if [ -n "$REMOTE_DIR" ]; then
   candidates=("$REMOTE_DIR")
 else
   candidates=(
-    "$SITE_DOMAIN/$SITE_DOMAIN/public_html"   # SiteGround Multisite SFTP key
+    "/$SITE_DOMAIN/$SITE_DOMAIN/public_html"  # SiteGround Multisite SFTP key
+    "$SITE_DOMAIN/$SITE_DOMAIN/public_html"
     "www/$SITE_DOMAIN/public_html"            # single-site SSH key
     "$SITE_DOMAIN/public_html"
   )
@@ -213,7 +241,7 @@ if [ -z "$remote" ]; then
   # Say what is inside this site's own folder, if there is one. Never list the top
   # level: on a multisite login it holds the names of every other site.
   inside=""
-  for site_folder in "$SITE_DOMAIN" "www"; do
+  for site_folder in "/$SITE_DOMAIN" "$SITE_DOMAIN" "www"; do
     if remote_dir_exists "$site_folder"; then
       inside="$(printf 'ls -1 "%s"\n' "$site_folder" | sftp_run 2>/dev/null | grep -v '^sftp>' | tr -d '\r' | sed "s#^$site_folder/##" | tr '\n' ' ' || true)"
       fail "found the folder \"$site_folder\" but no public_html for $SITE_DOMAIN inside it." \

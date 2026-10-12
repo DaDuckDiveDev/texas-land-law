@@ -26,24 +26,27 @@ The upload only adds and replaces files. It never deletes anything on the server
 
 ### Secrets
 
-Add these under **Settings > Secrets and variables > Actions**:
+The workflow reads two repository secrets (**Settings > Secrets and variables > Actions**):
 
 | Secret | Value |
 | --- | --- |
-| `SFTP_USER` | The SFTP username SiteGround shows for the key. |
 | `SFTP_KEY` | The private key: the whole text, from the `-----BEGIN` line to the `-----END` line. |
 | `SFTP_KEY_PASSPHRASE` | The password you set when you created the key. Leave it out if the key has none. |
 
-For a SiteGround Multisite SFTP key, all three are in the Client Area: your profile menu, then **Multisite SFTP Access**, then the key's menu (**SFTP credentials** and **Private Key**). Under **Manage Websites** in the same menu, make sure this site is ticked.
+Both come from the SiteGround Client Area: your profile menu, then **Multisite SFTP Access**, then the key's menu. Under **Manage Websites** in the same menu, make sure this site is ticked.
 
-The host (`sftp.siteground.net`), port (`18765`) and domain are plain values at the top of `.github/workflows/deploy.yml`.
+### Plain settings
 
-### Optional variables
+These sit at the top of `.github/workflows/deploy.yml`. They are the same Multisite SFTP login the `gym-sites` repository uses.
 
-| Variable | Use |
+| Setting | Value |
 | --- | --- |
-| `SFTP_REMOTE_DIR` | The path to the site's `public_html`, if the script does not find it. It tries `<domain>/<domain>/public_html`, then `www/<domain>/public_html`, then `<domain>/public_html`. |
-| `SFTP_KNOWN_HOSTS` | `known_hosts` line(s) for the server. Without it, the script trusts the host key it sees on each run. |
+| `SITE_DOMAIN` | `johnw860.sg-host.com` |
+| `SFTP_HOST`, `SFTP_PORT` | `sftp.siteground.net`, `18765` |
+| `SFTP_USER` | The SFTP username SiteGround shows for the key. |
+| `SFTP_HOST_FINGERPRINT` | The server's host key fingerprint. The job stops if the server presents any other key. |
+
+The script looks for the site's web folder at `/<domain>/<domain>/public_html`, then `www/<domain>/public_html`, then `<domain>/public_html`. If yours is somewhere else, set a repository variable named `SFTP_REMOTE_DIR` to the path.
 
 ### Deploying from your own machine
 

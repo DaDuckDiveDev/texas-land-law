@@ -1,15 +1,16 @@
 name: Deploy to SiteGround
 
-# Uploads public/ to the SiteGround site over SFTP.
+# Uploads public/ to the SiteGround site over SFTP whenever main changes.
 #
 # Repository secrets it needs (Settings > Secrets and variables > Actions):
-#   SFTP_USER            the SFTP username SiteGround shows for the key
 #   SFTP_KEY             the private key, whole text
-#   SFTP_KEY_PASSPHRASE  the key's password
+#   SFTP_KEY_PASSPHRASE  the key's password (leave unset if the key has none)
 #
-# Optional repository variables:
+# The host, port, username and host fingerprint below are the same Multisite SFTP
+# login the gym-sites repository uses.
+#
+# Optional repository variable:
 #   SFTP_REMOTE_DIR      the site's public_html, if it is not found automatically
-#   SFTP_KNOWN_HOSTS     known_hosts line(s), to pin the server's host key
 
 on:
   push:
@@ -27,6 +28,9 @@ env:
   SITE_DOMAIN: johnw860.sg-host.com
   SFTP_HOST: sftp.siteground.net
   SFTP_PORT: "18765"
+  SFTP_USER: sftp6234-d725e521
+  # The job stops if the server presents a key with any other fingerprint.
+  SFTP_HOST_FINGERPRINT: SHA256:PvEri3iYKZeVBGSPE54fg2bDTfYxGpHqnRc+nOZMj/Q
 
 jobs:
   deploy:
@@ -41,11 +45,9 @@ jobs:
 
       - name: Upload public/ over SFTP
         env:
-          SFTP_USER: ${{ secrets.SFTP_USER }}
           SFTP_KEY: ${{ secrets.SFTP_KEY }}
           SFTP_KEY_PASSPHRASE: ${{ secrets.SFTP_KEY_PASSPHRASE }}
           REMOTE_DIR: ${{ vars.SFTP_REMOTE_DIR }}
-          SFTP_KNOWN_HOSTS: ${{ vars.SFTP_KNOWN_HOSTS }}
         run: bash scripts/deploy-sftp.sh
 
       - name: Check the live page
