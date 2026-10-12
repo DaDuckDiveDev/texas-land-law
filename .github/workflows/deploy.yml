@@ -1,0 +1,63 @@
+name: Deploy to SiteGround
+
+# Uploads public/ to the SiteGround site over SFTP.
+#
+# Repository secrets it needs (Settings > Secrets and variables > Actions):
+#   SFTP_USER            the SFTP username SiteGround shows for the key
+#   SFTP_KEY             the private key, whole text
+#   SFTP_KEY_PASSPHRASE  the key's password
+#
+# Optional repository variables:
+#   SFTP_REMOTE_DIR      the site's public_html, if it is not found automatically
+#   SFTP_KNOWN_HOSTS     known_hosts line(s), to pin the server's host key
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: siteground-deploy
+  cancel-in-progress: false
+
+env:
+  SITE_DOMAIN: johnw860.sg-host.com
+  SFTP_HOST: sftp.siteground.net
+  SFTP_PORT: "18765"
+
+jobs:
+  deploy:
+    name: Upload the site
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out the site
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Upload public/ over SFTP
+        env:
+          SFTP_USER: ${{ secrets.SFTP_USER }}
+          SFTP_KEY: ${{ secrets.SFTP_KEY }}
+          SFTP_KEY_PASSPHRASE: ${{ secrets.SFTP_KEY_PASSPHRASE }}
+          REMOTE_DIR: ${{ vars.SFTP_REMOTE_DIR }}
+          SFTP_KNOWN_HOSTS: ${{ vars.SFTP_KNOWN_HOSTS }}
+        run: bash scripts/deploy-sftp.sh
+
+      - name: Check the live page
+        run: |
+          url="http://${SITE_DOMAIN}/"
+          for attempt in 1 2 3 4; do
+            body="$(curl -fsSL --max-time 20 "$url" || true)"
+            if grep -q "Texas Land Law, PLLC" <<<"$body"; then
+              echo "The new page is live at $url"
+              echo "Live at <$url>" >> "$GITHUB_STEP_SUMMARY"
+              exit 0
+            fi
+            sleep 15
+          done
+          echo "::warning title=Uploaded, not visible yet::$url is not showing the new page. If it still is not there in a few minutes, clear the cache in SiteGround (Site Tools > Speed > Caching) and check that the domain points at this site."
